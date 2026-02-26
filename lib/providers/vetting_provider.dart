@@ -1,18 +1,27 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/question.dart';
 import '../services/api_service.dart';
+import 'api_provider.dart';
+
+const int kDefaultDailyLimit = 50;
 
 class VettingState {
   final List<Question> questions;
   final int currentIndex;
   final String statusFilter;
   final bool isLoading;
+  final int vettedToday;
+  final int remainingVotes;
+  final int dailyLimit;
 
   VettingState({
     this.questions = const [],
     this.currentIndex = 0,
     this.statusFilter = 'pending',
     this.isLoading = false,
+    this.vettedToday = 0,
+    this.remainingVotes = kDefaultDailyLimit,
+    this.dailyLimit = kDefaultDailyLimit,
   });
 
   VettingState copyWith({
@@ -20,12 +29,18 @@ class VettingState {
     int? currentIndex,
     String? statusFilter,
     bool? isLoading,
+    int? vettedToday,
+    int? remainingVotes,
+    int? dailyLimit,
   }) {
     return VettingState(
       questions: questions ?? this.questions,
       currentIndex: currentIndex ?? this.currentIndex,
       statusFilter: statusFilter ?? this.statusFilter,
       isLoading: isLoading ?? this.isLoading,
+      vettedToday: vettedToday ?? this.vettedToday,
+      remainingVotes: remainingVotes ?? this.remainingVotes,
+      dailyLimit: dailyLimit ?? this.dailyLimit,
     );
   }
 }
@@ -52,13 +67,16 @@ class VettingNotifier extends Notifier<VettingState> {
     );
 
     try {
-      final questions = await _apiService.fetchQuestions(
+      final result = await _apiService.fetchQuestions(
         status: state.statusFilter,
       );
       state = state.copyWith(
-        questions: questions,
+        questions: result['questions'] as List<Question>,
         currentIndex: 0,
         isLoading: false,
+        vettedToday: (result['vetted_today'] as int?) ?? 0,
+        remainingVotes: (result['remaining_votes'] as int?) ?? 0,
+        dailyLimit: (result['daily_limit'] as int?) ?? kDefaultDailyLimit,
       );
     } catch (e) {
       state = state.copyWith(isLoading: false);
@@ -111,8 +129,6 @@ class VettingNotifier extends Notifier<VettingState> {
     }
   }
 }
-
-final apiServiceProvider = Provider<ApiService>((ref) => ApiService());
 
 final vettingProvider = NotifierProvider<VettingNotifier, VettingState>(() {
   return VettingNotifier();

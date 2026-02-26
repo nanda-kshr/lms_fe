@@ -2,15 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
+  // Original Colors (kept for safe migration)
   static const primaryBlue = Color(0xFF007AFF);
   static const successGreen = Color(0xFF4CD964);
   static const errorRed = Color(0xFFFF3B30);
   static const warningOrange = Color(0xFFFF9500);
-
   static const silverBg = Color(0xFFE5E5E7);
   static const backgroundPatternColor = Color(0xFFD1D1D6);
   static const iosGrey = Color(0xFF8E8E93);
   static const headerBlue = Color(0xFF7B96B2);
+
+  // iPhone 17 Modern Colors
+  static const modernBackground = Color(
+    0xFFF2F2F7,
+  ); // System Grouped Background
+  static const modernSurface = Colors.white;
+  static const modernAccent = Color(0xFF007AFF); // iOS Blue
+  static const modernTextPrimary = Color(0xFF000000);
+  static const modernTextSecondary = Color(0xFF8E8E93);
 
   static ThemeData get lightTheme {
     return ThemeData(
@@ -39,6 +48,33 @@ class AppTheme {
         selectedItemColor: Colors.white,
         unselectedItemColor: Colors.white38,
         type: BottomNavigationBarType.fixed,
+      ),
+    );
+  }
+
+  static ThemeData get modernTheme {
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      scaffoldBackgroundColor: modernBackground,
+      primaryColor: modernAccent,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: modernAccent,
+        background: modernBackground,
+        surface: modernSurface,
+        error: errorRed,
+      ),
+      textTheme: GoogleFonts.outfitTextTheme(
+        ThemeData.light().textTheme.apply(
+          bodyColor: modernTextPrimary,
+          displayColor: modernTextPrimary,
+        ),
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: false,
+        systemOverlayStyle: null, // Let system handle status bar
       ),
     );
   }

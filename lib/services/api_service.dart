@@ -325,6 +325,8 @@ class ApiService {
     required Map<String, int> coDistribution,
     required Map<String, int> loDistribution,
     required Map<String, int> difficultyDistribution,
+    String? questionStyle,
+    CancelToken? cancelToken,
   }) async {
     try {
       final response = await _dio.post(
@@ -337,11 +339,16 @@ class ApiService {
           'co_distribution': coDistribution,
           'lo_distribution': loDistribution,
           'difficulty_distribution': difficultyDistribution,
+          if (questionStyle != null) 'question_style': questionStyle,
         },
         options: Options(receiveTimeout: const Duration(minutes: 60)),
+        cancelToken: cancelToken,
       );
       return response.data;
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        throw Exception('Generation cancelled by user.');
+      }
       throw Exception(
         'Failed to generate paper: ${e.response?.data ?? e.message}',
       );
@@ -478,6 +485,65 @@ class ApiService {
     } on DioException catch (e) {
       throw Exception(
         'Failed to delete topic: ${e.response?.data ?? e.message}',
+      );
+    }
+  }
+
+  // ── Rubrics ────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getRubrics({
+    String? search,
+    int page = 1,
+    int limit = 10,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/rubrics',
+        queryParameters: {
+          if (search != null && search.isNotEmpty) 'search': search,
+          'page': page,
+          'limit': limit,
+        },
+      );
+      return response.data;
+    } on DioException catch (e) {
+      throw Exception(
+        'Failed to fetch rubrics: ${e.response?.data ?? e.message}',
+      );
+    }
+  }
+
+  Future<Map<String, dynamic>> createRubric(Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.post('/rubrics', data: data);
+      return response.data;
+    } on DioException catch (e) {
+      throw Exception(
+        'Failed to create rubric: ${e.response?.data ?? e.message}',
+      );
+    }
+  }
+
+  Future<Map<String, dynamic>> updateRubric(
+    String id,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await _dio.put('/rubrics/$id', data: data);
+      return response.data;
+    } on DioException catch (e) {
+      throw Exception(
+        'Failed to update rubric: ${e.response?.data ?? e.message}',
+      );
+    }
+  }
+
+  Future<void> deleteRubric(String id) async {
+    try {
+      await _dio.delete('/rubrics/$id');
+    } on DioException catch (e) {
+      throw Exception(
+        'Failed to delete rubric: ${e.response?.data ?? e.message}',
       );
     }
   }

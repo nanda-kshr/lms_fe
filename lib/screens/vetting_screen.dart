@@ -265,6 +265,43 @@ class _VettingScreenState extends ConsumerState<VettingScreen> {
                   letterSpacing: -0.5,
                 ),
               ),
+              if (question.referenceMaterial != null &&
+                  question.referenceMaterial!.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.auto_stories_rounded,
+                        size: 18,
+                        color: Colors.blue,
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          'From: ${question.referenceMaterial} (Page ${question.referencePage ?? 'N/A'})',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.blue,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               // MCQ Options
               if (question.options != null) ...[
                 const SizedBox(height: 24),
@@ -317,12 +354,6 @@ class _VettingScreenState extends ConsumerState<VettingScreen> {
                 ),
               if (question.loList.isNotEmpty)
                 _buildQuestionMeta('LOs', question.loList.join(', ')),
-              if (question.referenceMaterial != null &&
-                  question.referenceMaterial!.isNotEmpty)
-                _buildQuestionMeta(
-                  'Reference',
-                  '${question.referenceMaterial} (Page ${question.referencePage ?? 'N/A'})',
-                ),
             ],
           ),
         ),
@@ -413,6 +444,43 @@ class _VettingScreenState extends ConsumerState<VettingScreen> {
                 height: 1.3,
               ),
             ),
+            if (question.referenceMaterial != null &&
+                question.referenceMaterial!.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.auto_stories_rounded,
+                      size: 18,
+                      color: Colors.blue,
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        'From: ${question.referenceMaterial} (Page ${question.referencePage ?? 'N/A'})',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.blue,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             // MCQ Options
             if (question.options != null) ...[
               const SizedBox(height: 20),
@@ -461,12 +529,6 @@ class _VettingScreenState extends ConsumerState<VettingScreen> {
               ),
             if (question.loList.isNotEmpty)
               _buildQuestionMeta('LOs', question.loList.join(', ')),
-            if (question.referenceMaterial != null &&
-                question.referenceMaterial!.isNotEmpty)
-              _buildQuestionMeta(
-                'Reference',
-                '${question.referenceMaterial} (Page ${question.referencePage ?? 'N/A'})',
-              ),
             const SizedBox(height: 12),
             if (isPending)
               const Text(

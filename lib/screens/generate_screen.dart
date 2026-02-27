@@ -5,8 +5,11 @@ import '../widgets/modern_header.dart';
 import '../widgets/glass_container.dart';
 import '../providers/generation_provider.dart';
 import '../providers/courses_provider.dart';
+import '../providers/rubrics_provider.dart';
 import '../models/course.dart';
+
 import '../services/export_service.dart';
+import 'rubric_editor_screen.dart';
 
 class GenerateScreen extends ConsumerStatefulWidget {
   const GenerateScreen({super.key});
@@ -23,13 +26,17 @@ class _GenerateScreenState extends ConsumerState<GenerateScreen> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(() => ref.read(coursesProvider.notifier).loadCourses());
+    Future.microtask(() {
+      ref.read(coursesProvider.notifier).loadCourses();
+      ref.read(rubricsProvider.notifier).loadRubrics();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final genState = ref.watch(generationProvider);
     final courses = ref.watch(coursesProvider);
+    final rubState = ref.watch(rubricsProvider);
 
     return Scaffold(
       body: CustomScrollView(
@@ -54,6 +61,9 @@ class _GenerateScreenState extends ConsumerState<GenerateScreen> {
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 if (genState.error != null) _buildErrorCard(genState.error!),
+
+                if (genState.generatedQuestions.isEmpty && !genState.isLoading)
+                  ..._buildRubricsPanel(rubState),
 
                 if (genState.generatedQuestions.isEmpty && !genState.isLoading)
                   ..._buildConfigForm(courses, genState)
@@ -91,6 +101,213 @@ class _GenerateScreenState extends ConsumerState<GenerateScreen> {
         ],
       ),
     );
+  }
+
+  List<Widget> _buildRubricsPanel(RubricsState rubState) {
+    return [
+      // Create Rubric Button
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: ElevatedButton.icon(
+          onPressed: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const RubricEditorScreen()),
+            );
+            ref.read(rubricsProvider.notifier).loadRubrics();
+          },
+          icon: const Icon(Icons.add_rounded, size: 20),
+          label: const Text(
+            'Create Rubric',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.modernAccent,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(height: 24),
+
+      // Saved Rubrics Section
+      _buildSectionHeader('SAVED RUBRICS'),
+
+      // Search bar
+      GlassContainer(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: TextField(
+          decoration: const InputDecoration(
+            hintText: 'Search rubrics...',
+            prefixIcon: Icon(Icons.search, size: 20),
+            border: InputBorder.none,
+            contentPadding: EdgeInsets.symmetric(vertical: 12),
+          ),
+          onChanged: (val) =>
+              ref.read(rubricsProvider.notifier).updateSearch(val),
+        ),
+      ),
+      const SizedBox(height: 12),
+
+      // Rubric list
+      if (rubState.isLoading)
+        const Center(
+          child: Padding(
+            padding: EdgeInsets.all(32),
+            child: CircularProgressIndicator(),
+          ),
+        )
+      else if (rubState.rubrics.isEmpty)
+        GlassContainer(
+          padding: const EdgeInsets.all(32),
+          child: Center(
+            child: Column(
+              children: [
+                Icon(
+                  Icons.description_outlined,
+                  size: 40,
+                  color: Colors.grey.shade400,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'No rubrics yet',
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        )
+      else ...[
+        ...rubState.rubrics.map(
+          (rubric) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: GlassContainer(
+              padding: EdgeInsets.zero,
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppTheme.modernAccent.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.description_rounded,
+                    color: AppTheme.modernAccent,
+                    size: 20,
+                  ),
+                ),
+                title: Text(
+                  rubric.name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+                subtitle: Text(
+                  '${rubric.courseCode} · ${rubric.total}Q · ${rubric.questionStyle}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.red,
+                        size: 20,
+                      ),
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Delete Rubric'),
+                            content: const Text(
+                              'Are you sure you want to delete this rubric?',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Cancel'),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                ),
+                                child: const Text('Delete'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirm == true && mounted) {
+                          await ref
+                              .read(rubricsProvider.notifier)
+                              .deleteRubric(rubric.id);
+                        }
+                      },
+                    ),
+                    const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                  ],
+                ),
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          RubricEditorScreen(existingRubric: rubric),
+                    ),
+                  );
+                  ref.read(rubricsProvider.notifier).loadRubrics();
+                },
+              ),
+            ),
+          ),
+        ),
+
+        // Pagination
+        if (rubState.totalPages > 1)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.chevron_left_rounded),
+                  onPressed: rubState.currentPage > 1
+                      ? () => ref
+                            .read(rubricsProvider.notifier)
+                            .loadRubrics(page: rubState.currentPage - 1)
+                      : null,
+                ),
+                Text(
+                  '${rubState.currentPage} / ${rubState.totalPages}',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right_rounded),
+                  onPressed: rubState.currentPage < rubState.totalPages
+                      ? () => ref
+                            .read(rubricsProvider.notifier)
+                            .loadRubrics(page: rubState.currentPage + 1)
+                      : null,
+                ),
+              ],
+            ),
+          ),
+      ],
+      const SizedBox(height: 32),
+      const Divider(),
+      const SizedBox(height: 16),
+      _buildSectionHeader('QUICK GENERATE'),
+    ];
   }
 
   List<Widget> _buildConfigForm(
@@ -134,6 +351,15 @@ class _GenerateScreenState extends ConsumerState<GenerateScreen> {
             ),
             const SizedBox(height: 20),
             _buildTopicSelector(genState),
+            const SizedBox(height: 20),
+            _buildDropdownField(
+              'Question Style',
+              genState.questionStyle,
+              ['Analytical', 'Theory', 'Hybrid'],
+              (val) => ref
+                  .read(generationProvider.notifier)
+                  .updateQuestionStyle(val!),
+            ),
           ],
         ),
       ),
@@ -484,6 +710,23 @@ class _GenerateScreenState extends ConsumerState<GenerateScreen> {
           'RAG Phase in progress. This may take up to 30s.',
           style: TextStyle(color: Colors.black.withOpacity(0.4), fontSize: 13),
         ),
+        const SizedBox(height: 32),
+        TextButton.icon(
+          onPressed: () =>
+              ref.read(generationProvider.notifier).cancelGeneration(),
+          icon: const Icon(Icons.stop_circle_rounded, color: Colors.red),
+          label: const Text(
+            'CANCEL GENERATION',
+            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+          ),
+          style: TextButton.styleFrom(
+            backgroundColor: Colors.red.withOpacity(0.1),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -498,16 +741,6 @@ class _GenerateScreenState extends ConsumerState<GenerateScreen> {
             _buildSummaryRow(
               'Total Marks',
               '${genState.stats?['total_marks'] ?? 0}',
-            ),
-            const Divider(height: 24),
-            _buildSummaryRow(
-              'Bank Retrieval',
-              '${genState.stats?['from_bank'] ?? 0}',
-            ),
-            const Divider(height: 24),
-            _buildSummaryRow(
-              'AI Generated',
-              '${genState.stats?['ai_generated'] ?? 0}',
             ),
           ],
         ),
@@ -527,12 +760,37 @@ class _GenerateScreenState extends ConsumerState<GenerateScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Q${index + 1}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.modernAccent,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          'Q${index + 1}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.modernAccent,
+                          ),
+                        ),
+                        if (q.topic != null && q.topic!.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.modernAccent.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              q.topic!,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.modernAccent,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     Text(
                       '${q.marks} Marks',
@@ -543,6 +801,31 @@ class _GenerateScreenState extends ConsumerState<GenerateScreen> {
                     ),
                   ],
                 ),
+                if (q.referenceMaterial != null &&
+                    q.referenceMaterial!.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.menu_book_rounded,
+                        size: 14,
+                        color: AppTheme.modernTextSecondary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${q.referenceMaterial} (Page ${q.referencePage ?? 'N/A'})',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.modernTextSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 12),
                 Text(
                   q.text,
@@ -738,6 +1021,11 @@ class _GenerateScreenState extends ConsumerState<GenerateScreen> {
         if (topics.isEmpty) {
           return const SizedBox.shrink();
         }
+
+        final displayString = genState.topics.isEmpty
+            ? 'Select Topics'
+            : '${genState.topics.length} Selected (Tap to edit)';
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -746,37 +1034,37 @@ class _GenerateScreenState extends ConsumerState<GenerateScreen> {
               style: TextStyle(fontSize: 12, color: Colors.black45),
             ),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: topics.map((topic) {
-                final topicName = topic.name;
-                final isSelected = genState.topics.contains(topicName);
-                return FilterChip(
-                  label: Text(topicName),
-                  selected: isSelected,
-                  onSelected: (_) => ref
-                      .read(generationProvider.notifier)
-                      .toggleTopic(topicName),
-                  selectedColor: AppTheme.modernAccent.withOpacity(0.2),
-                  checkmarkColor: AppTheme.modernAccent,
-                  labelStyle: TextStyle(
-                    color: isSelected ? AppTheme.modernAccent : Colors.black87,
-                    fontWeight: isSelected
-                        ? FontWeight.bold
-                        : FontWeight.normal,
-                  ),
-                  backgroundColor: Colors.black.withOpacity(0.04),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    side: BorderSide(
-                      color: isSelected
-                          ? AppTheme.modernAccent.withOpacity(0.5)
-                          : Colors.transparent,
+            InkWell(
+              onTap: () => _showTopicsDialog(context, topics),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.04),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      displayString,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: genState.topics.isEmpty
+                            ? Colors.black54
+                            : Colors.black87,
+                        fontWeight: genState.topics.isEmpty
+                            ? FontWeight.normal
+                            : FontWeight.w600,
+                      ),
                     ),
-                  ),
-                );
-              }).toList(),
+                    const Icon(Icons.arrow_drop_down, color: Colors.black54),
+                  ],
+                ),
+              ),
             ),
           ],
         );
@@ -787,6 +1075,68 @@ class _GenerateScreenState extends ConsumerState<GenerateScreen> {
         child: CircularProgressIndicator(strokeWidth: 2),
       ),
       error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+
+  void _showTopicsDialog(BuildContext context, List<dynamic> topics) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            'Select Topics',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          contentPadding: const EdgeInsets.only(top: 12, bottom: 0),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Consumer(
+              builder: (context, ref, child) {
+                final currentState = ref.watch(generationProvider);
+                return ListView.separated(
+                  shrinkWrap: true,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: topics.length,
+                  separatorBuilder: (ctx, i) => const Divider(height: 1),
+                  itemBuilder: (ctx, index) {
+                    final topicName = topics[index].name;
+                    final isSelected = currentState.topics.contains(topicName);
+                    return CheckboxListTile(
+                      title: Text(
+                        topicName,
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      value: isSelected,
+                      activeColor: AppTheme.modernAccent,
+                      controlAffinity: ListTileControlAffinity.trailing,
+                      onChanged: (bool? value) {
+                        ref
+                            .read(generationProvider.notifier)
+                            .toggleTopic(topicName);
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'DONE',
+                style: TextStyle(
+                  color: AppTheme.modernAccent,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

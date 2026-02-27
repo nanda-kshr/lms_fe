@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 import '../models/question.dart';
 import '../services/api_service.dart';
 import 'api_provider.dart';
@@ -16,32 +17,34 @@ class GenerationState {
   final Set<String> locks;
   final bool isLoading;
   final String? error;
+  final String questionStyle;
 
   GenerationState({
     this.courseCode = 'DSA',
-    this.marks = 10,
-    this.total = 10,
+    this.marks = 1,
+    this.total = 1,
     this.coDistribution = const {
-      'CO1': 2,
-      'CO2': 2,
-      'CO3': 2,
-      'CO4': 2,
-      'CO5': 2,
+      'CO1': 1,
+      'CO2': 0,
+      'CO3': 0,
+      'CO4': 0,
+      'CO5': 0,
     },
     this.loDistribution = const {
-      'LO1': 2,
-      'LO2': 2,
-      'LO3': 2,
-      'LO4': 2,
-      'LO5': 2,
+      'LO1': 1,
+      'LO2': 0,
+      'LO3': 0,
+      'LO4': 0,
+      'LO5': 0,
     },
-    this.difficultyDistribution = const {'Easy': 4, 'Medium': 3, 'Hard': 3},
+    this.difficultyDistribution = const {'Easy': 1, 'Medium': 0, 'Hard': 0},
     this.topics = const [],
     this.generatedQuestions = const [],
     this.stats,
     this.locks = const {},
     this.isLoading = false,
     this.error,
+    this.questionStyle = 'Analytical',
   });
 
   GenerationState copyWith({
@@ -57,6 +60,7 @@ class GenerationState {
     Set<String>? locks,
     bool? isLoading,
     String? error,
+    String? questionStyle,
   }) {
     return GenerationState(
       courseCode: courseCode ?? this.courseCode,
@@ -72,6 +76,7 @@ class GenerationState {
       locks: locks ?? this.locks,
       isLoading: isLoading ?? this.isLoading,
       error: error ?? this.error,
+      questionStyle: questionStyle ?? this.questionStyle,
     );
   }
 
@@ -86,6 +91,7 @@ class GenerationState {
 
 class GenerationNotifier extends Notifier<GenerationState> {
   ApiService get _apiService => ref.read(apiServiceProvider);
+  CancelToken? _cancelToken;
 
   @override
   GenerationState build() => GenerationState();
@@ -153,6 +159,8 @@ class GenerationNotifier extends Notifier<GenerationState> {
     int total,
   ) {
     if (newVal > total) newVal = total;
+    if (newVal < 0) newVal = 0;
+
     final oldVal = currentDist[changedKey] ?? 0;
     if (newVal == oldVal) return currentDist;
 
@@ -160,53 +168,63 @@ class GenerationNotifier extends Notifier<GenerationState> {
     dist[changedKey] = newVal;
 
     int delta = newVal - oldVal;
+
+    // Keys that can be adjusted (not locked, not the changed key)
     final otherKeys = allKeys
         .where((k) => k != changedKey && !state.locks.contains(k))
         .toList();
 
     if (otherKeys.isEmpty) {
-      // If everything else is locked, revert the change
+      // If everything else is locked, we can't balance it, so revert
       return currentDist;
     }
 
     if (delta > 0) {
-      // Subtracting from others
+      // We increased a slider, so we need to decrease others by `delta`
       int toSubtract = delta;
 
-      // We loop to handle cases where some items hit 0 before others
-      while (toSubtract > 0) {
-        int poolSum = otherKeys.fold(0, (sum, k) => sum + dist[k]!);
-        if (poolSum == 0) {
-          // Can't subtract anymore, cap the changedKey
-          dist[changedKey] = (dist[changedKey] ?? 0) - toSubtract;
-          break;
+      // Predictable subtraction: go from right to left (bottom to top visually)
+      // to subtract from the "later" items first.
+      for (int i = otherKeys.length - 1; i >= 0; i--) {
+        if (toSubtract <= 0) break;
+        String key = otherKeys[i];
+        int current = dist[key] ?? 0;
+
+        if (current > 0) {
+          int take = current >= toSubtract ? toSubtract : current;
+          dist[key] = current - take;
+          toSubtract -= take;
         }
+      }
 
-        int absorbed = 0;
-        for (final k in otherKeys) {
-          int val = dist[k]!;
-          if (val == 0) continue;
-
-          // Proportional share
-          int share = (val * toSubtract / poolSum).floor();
-          if (share == 0 && toSubtract > 0) share = 1;
-
-          int taken = val < share ? val : share;
-          dist[k] = val - taken;
-          absorbed += taken;
-          toSubtract -= taken;
-          if (toSubtract <= 0) break;
-        }
-        if (absorbed == 0) break;
+      // If we still have `toSubtract` left, it means we hit the floor (0) on all other keys.
+      // We must revert the changedKey by the remaining amount so the total stays correct.
+      if (toSubtract > 0) {
+        dist[changedKey] = (dist[changedKey] ?? 0) - toSubtract;
       }
     } else {
-      // Adding to others
-      int toAdd = delta.abs();
-      int share = toAdd ~/ otherKeys.length;
-      int rem = toAdd % otherKeys.length;
+      // We decreased a slider, so we need to increase others by `abs(delta)`
+      int toAdd = -delta;
+
+      // Predictable addition: add to the first available key to the right of the changed one
+      // If none to the right, add to the first available key from the left.
+
+      int changedIndex = allKeys.indexOf(changedKey);
+
+      // Try keys after the changed key first
       for (int i = 0; i < otherKeys.length; i++) {
-        dist[otherKeys[i]] =
-            (dist[otherKeys[i]] ?? 0) + share + (i < rem ? 1 : 0);
+        String key = otherKeys[i];
+        if (allKeys.indexOf(key) > changedIndex) {
+          dist[key] = (dist[key] ?? 0) + toAdd;
+          toAdd = 0;
+          break;
+        }
+      }
+
+      // If still not added (e.g. changed the last key), add to the first available
+      if (toAdd > 0 && otherKeys.isNotEmpty) {
+        String key = otherKeys.first;
+        dist[key] = (dist[key] ?? 0) + toAdd;
       }
     }
 
@@ -249,7 +267,12 @@ class GenerationNotifier extends Notifier<GenerationState> {
     );
   }
 
+  void updateQuestionStyle(String style) {
+    state = state.copyWith(questionStyle: style);
+  }
+
   Future<void> generatePaper() async {
+    _cancelToken = CancelToken();
     state = state.copyWith(
       isLoading: true,
       error: null,
@@ -268,6 +291,8 @@ class GenerationNotifier extends Notifier<GenerationState> {
         coDistribution: state.coDistribution,
         loDistribution: state.loDistribution,
         difficultyDistribution: state.difficultyDistribution,
+        questionStyle: state.questionStyle,
+        cancelToken: _cancelToken,
       );
 
       final List<dynamic> questionsJson = result['paper'] ?? [];
@@ -281,11 +306,33 @@ class GenerationNotifier extends Notifier<GenerationState> {
         isLoading: false,
       );
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      if (e.toString().contains('cancelled')) {
+        state = state.copyWith(
+          isLoading: false,
+          error: 'Generation cancelled by user.',
+        );
+      } else {
+        state = state.copyWith(isLoading: false, error: e.toString());
+      }
+    } finally {
+      _cancelToken = null;
     }
   }
 
+  void cancelGeneration() {
+    _cancelToken?.cancel('Generation cancelled by user.');
+    _cancelToken = null;
+    state = state.copyWith(
+      isLoading: false,
+      error: 'Generation cancelled by user.',
+    );
+  }
+
   void reset() {
+    try {
+      _cancelToken?.cancel('Generation cancelled by user.');
+    } catch (_) {}
+    _cancelToken = null;
     state = GenerationState();
   }
 }
